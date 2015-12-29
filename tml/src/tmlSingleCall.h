@@ -43,6 +43,8 @@
 #include "tmlProfileHandler.h"
 #include "tmlCollectCallDestinationObjHandler.h"
 
+#define MAX_ALLOWED_CHANNEL_PER_CONNECTION 6
+#define SLEEP_TIME_WAIT_IDLE_CANNEL        30
 
 //////////////////////////////////////////////////////////////////////////////
 // C - declarations:
@@ -333,10 +335,11 @@ private:
      * @param   connectionObj               Reference to an instance of tmlConnectionObj.
      * @param   bFoundRet                   Reference to foud flag / true if the connection element was found, otherwise false.
      * @param   bRemoveMarkedObjs           Flag if true, pending unsubscription lists will be emptied, if possible
+     * @param   iTimeout                    Timeout for the command execution (in ms).
      *
      * @returns TML_SUCCESS on success
      */
-    int SearchForConnectionObjInHT(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** connectionObj, VortexChannelPool** channelPool, bool* bFoundRet, bool bRemoveMarkedObjs);
+    int SearchForConnectionObjInHT(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** connectionObj, VortexChannelPool** channelPool, bool* bFoundRet, bool bRemoveMarkedObjs, unsigned int iTimeout);
 
 
     /**
@@ -348,10 +351,11 @@ private:
      * @param   pConnectionObj              Reference to an instance of tmlConnectionObj.
      * @param   bRawViaVortexPayloadFeeder  True in case of using the Vortex Payload Feeder API.
      * @param   bRemoveMarkedObjs           Flag if true, pending unsubscription lists will be emptied, if possible
+     * @param   iTimeout                    Timeout for the command execution (in ms).
      *
      * @returns true if the connection element was found, otherwise false.
      */
-    int GetConnectionElement(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** pConnectionObj, bool bRawViaVortexPayloadFeeder, bool bRemoveMarkedObjs);
+    int GetConnectionElement(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** pConnectionObj, bool bRawViaVortexPayloadFeeder, bool bRemoveMarkedObjs, unsigned int iTimeout);
 
 
     /**

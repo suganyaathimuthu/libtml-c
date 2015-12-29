@@ -865,7 +865,7 @@ int tmlSingleCall::GetConnection(const char* profile, const char* sHost, const c
 /**
  * @brief    Search for an existing tmlConnectionObj in a VORTEXConnectionListElement for the requested parameter
  */
-int tmlSingleCall::SearchForConnectionObjInHT(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** connectionObj, VortexChannelPool** channelPool, bool* bFoundRet, bool bRemoveMarkedObjs){
+int tmlSingleCall::SearchForConnectionObjInHT(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** connectionObj, VortexChannelPool** channelPool, bool* bFoundRet, bool bRemoveMarkedObjs, unsigned int iTimeout){
   ///////////////////////////////////////////////////////////////////////////
   // Begin of critical section
 
@@ -895,56 +895,78 @@ int tmlSingleCall::SearchForConnectionObjInHT(const char* profile, const char* s
       bool bUnlockedFound = false;
       bool bAnyFound = false;
       tmlConnectionObj*  intConnectionObj;
-      for (int i = 0; i < iSize && TML_SUCCESS == iRet && !bUnlockedFound;++i){
-        iRet = m_ConnectionElementHT->getValue(iKeys[i], (void**) &intConnectionObj);
-        if (TML_SUCCESS == iRet){
-          bFound = intConnectionObj->isEqual(profile, sHost, sPort);
-          if (bFound){
-            if (intConnectionObj->isPendingToBeRemoved()){
-              bFound = false;
+
+
+      bool bRetry = false;
+      int  iBusyChannelCount = 0;
+      int  maxBusyCount = iTimeout / SLEEP_TIME_WAIT_IDLE_CANNEL;
+      do{
+        bRetry = false;
+        for (int i = 0; i < iSize && TML_SUCCESS == iRet && !bUnlockedFound;++i){
+          iRet = m_ConnectionElementHT->getValue(iKeys[i], (void**) &intConnectionObj);
+          if (TML_SUCCESS == iRet){
+            bFound = intConnectionObj->isEqual(profile, sHost, sPort);
+            if (bFound){
+              if (intConnectionObj->isPendingToBeRemoved()){
+                bFound = false;
+              }
             }
-          }
-          if (bFound){
-            if (!intConnectionObj->isLocked(true, true)){
-              intConnectionObj->lock(false, true);
-              *connectionObj = intConnectionObj;
-              bUnlockedFound = true;
-            }
-            else{
-              //////////////////////////////////////////////
-              // Der zweite async- Send- Request ueberhaupt auf diese connection koennte 
-              // bereits erfolgen, ohne dass der channelPool schon gesetzt wurde, daher folgende 
-              // loop:
-              intConnectionObj->getChannelPool(channelPool);
-              if (NULL == *channelPool){
-                int iCount = 0;
-                ///////////////////////////////////////////////
-                // loop to get the for channelPool.
-                // In case of multiple async commands it may
-                // be possible, that the value is about to be
-                // set of the predecessor
-                do{
-                  intConnectionObj->getChannelPool(channelPool);
+            if (bFound){
+              if (!intConnectionObj->isLocked(true, true)){
+                intConnectionObj->lock(false, true);
+                *connectionObj = intConnectionObj;
+                bUnlockedFound = true;
+              }
+              else{
+                ++iBusyChannelCount;
+                //////////////////////////////////////////////
+                // the second async send request on this connection may
+                // have happened without a valid channelPool, so do the following 
+                // loop:
+                intConnectionObj->getChannelPool(channelPool);
+                if (NULL == *channelPool){
+                  int iCount = 0;
+                  ///////////////////////////////////////////////
+                  // loop to get the for channelPool.
+                  // In case of multiple async commands it may
+                  // be possible, that the value is about to be
+                  // set of the predecessor
+                  do{
+                    intConnectionObj->getChannelPool(channelPool);
+                    if (NULL == *channelPool){
+                      SleepForMilliSeconds(20);
+                      ++iCount;
+                    }
+                  }
+                  while (NULL == *channelPool && iCount < 50);
                   if (NULL == *channelPool){
-                    SleepForMilliSeconds(20);
-                    ++iCount;
+                    m_log->log ("tmlSingleCall", "SearchForConnectionObjInHT", "###################", "Object is looked but no channelPool value");
+                    iRet = TML_ERR_SENDER_NOT_INITIALIZED;
                   }
                 }
-                while (NULL == *channelPool && iCount < 50);
-                if (NULL == *channelPool){
-                  m_log->log ("tmlSingleCall", "SearchForConnectionObjInHT", "###################", "Object is looked but no channelPool value");
-                  iRet = TML_ERR_SENDER_NOT_INITIALIZED;
+                if (!bAnyFound){
+                  bAnyFound = true;
+                  intAnyConnectionObj = intConnectionObj;
                 }
+                bFound = false;
               }
-              if (!bAnyFound){
-                bAnyFound = true;
-                intAnyConnectionObj = intConnectionObj;
-              }
-              bFound = false;
             }
           }
         }
-      }
+        if (TML_SUCCESS == iRet){
+          if (iBusyChannelCount == MAX_ALLOWED_CHANNEL_PER_CONNECTION){
+            if (0 == --maxBusyCount){
+              m_log->log ("tmlSingleCall", "SearchForConnectionObjInHT", "###################", "timeout elapsed but still all channel busy");
+              iRet = TML_ERR_SENDER_NOT_INITIALIZED;
+            }
+            else{
+              iBusyChannelCount = 0;
+              Sleep (SLEEP_TIME_WAIT_IDLE_CANNEL);
+              bRetry = true;
+            }
+          }
+        }
+      }while (TML_SUCCESS == iRet && bRetry);
       if (TML_SUCCESS == iRet){
         if (!bUnlockedFound){
           if (bAnyFound){
@@ -995,7 +1017,7 @@ int tmlSingleCall::SearchForConnectionObjInHT(const char* profile, const char* s
 /**
  * @brief    Get the Vortex connection element for the requested parameter.
  */
-int tmlSingleCall::GetConnectionElement(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** pConnectionObj, bool bRawViaVortexPayloadFeeder, bool bRemoveMarkedObjs)
+int tmlSingleCall::GetConnectionElement(const char* profile, const char* sHost, const char* sPort, tmlConnectionObj** pConnectionObj, bool bRawViaVortexPayloadFeeder, bool bRemoveMarkedObjs, unsigned int iTimeout)
 {
   int iRet = TML_SUCCESS;
 
@@ -1010,7 +1032,7 @@ int tmlSingleCall::GetConnectionElement(const char* profile, const char* sHost, 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Get the connection out of my connection list for the attributes: profile, sHost, sPort / if it exists:
   VortexChannelPool* channelPool = NULL;
-  iRet = SearchForConnectionObjInHT(profile, sHost, sPort, &connectionObj, &channelPool, &bFound, bRemoveMarkedObjs);
+  iRet = SearchForConnectionObjInHT(profile, sHost, sPort, &connectionObj, &channelPool, &bFound, bRemoveMarkedObjs, iTimeout);
   if (TML_SUCCESS == iRet){
     if (!bFound){
       /////////////////////////////////////////////////////////////////////////////
@@ -1107,7 +1129,7 @@ int tmlSingleCall::sender_SendSyncMessage(const char* profile,
   // The tmlConnectionObj containing the TMLCoreSender:
 
   if (TML_SUCCESS == iRet){
-    iRet = GetConnectionElement(profile, sHost, sPort, &connectionObj, false, bRemoveMarkedObjs);
+    iRet = GetConnectionElement(profile, sHost, sPort, &connectionObj, false, bRemoveMarkedObjs, iTimeout);
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1187,7 +1209,7 @@ int tmlSingleCall::sender_SendAsyncMessage(const char* profile, const char* sHos
   //bLockCritical not used anymore:
 
   if (TML_SUCCESS == iRet){
-    iRet = GetConnectionElement(profile, sHost, sPort, &connectionObj, bRawViaVortexPayloadFeeder, true);
+    iRet = GetConnectionElement(profile, sHost, sPort, &connectionObj, bRawViaVortexPayloadFeeder, true, iTimeout);
   }
 
   TML_COMMAND_ID_TYPE iCmd;
