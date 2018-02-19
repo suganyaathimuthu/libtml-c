@@ -42,12 +42,16 @@
 #include <string.h>
 #include <sidex.h>
 #include <tmlCore.h>
+#include <logValues.h>
+#include <pthread.h>
 
 #ifdef LINUX
   #include <unistd.h>
 #else // LINUX
   #include <windows.h>
 #endif // LINUX
+
+#include <string>
 
 #ifdef BUILD_TLS
 #include "tml-tls.h"
@@ -118,7 +122,38 @@ void wait(SIDEX_INT64 milliseconds){
  * Callback method invoked in case of incomming CMD- Code 4711
  */
 void FUNC_C_DECL callbackMethodCmd4711(TML_COMMAND_HANDLE cmdMsg, TML_POINTER data){
+   printf("  envoke callbackMethodCmd4711\n");
+
+    TML_INT32 iErr = TML_SUCCESS;
+    TML_INT64 iSleep = 0;
+    /////////////////////////////////////////////////////////////////////////
+    // Set sleep parameter
+    SIDEX_HANDLE sHandle = SIDEX_HANDLE_TYPE_NULL;
+    iErr = tml_Cmd_Acquire_Sidex_Handle(cmdMsg, &sHandle);
+    // tml_Send_AsyncProgressReply(cmdMsg, 10);
+    /*  if (TML_SUCCESS == iErr)
+    iErr = sidex_Integer_Read(sHandle, PARAMS, SLEEP_MS, &iSleep);
+    if (TML_SUCCESS == iErr)
+    iErr = sidex_Integer_Write(sHandle, PARAMS, SLEEP_MS, iSleep / 2);*/
+
+    unsigned char *fileContent = NULL;
+    SIDEX_INT32 fcLength = 0;
+    //tml_Send_AsyncProgressReply(cmdMsg, 30);
+    iErr = sidex_Binary_Read(sHandle, PARAMS, "FILE_CONTENT", &fileContent, &fcLength);
+    //tml_Send_AsyncProgressReply(cmdMsg, 80);
+    if (TML_SUCCESS == iErr)
+    {
+        std::string str((char *)fileContent);
+        printf("%d", str.length());
+    }
+    else
+        printf("%d", iErr);
+    iErr = tml_Cmd_Release_Sidex_Handle(cmdMsg);
+    //tml_Send_AsyncProgressReply(cmdMsg, 100);
+    wait(iSleep); 
+#if 0
   printf ("  envoke callbackMethodCmd4711\n");
+fflush(0);
 
   TML_INT32 iErr = TML_SUCCESS;
   TML_INT64 iSleep = 0;
@@ -126,13 +161,24 @@ void FUNC_C_DECL callbackMethodCmd4711(TML_COMMAND_HANDLE cmdMsg, TML_POINTER da
   // Set sleep parameter
   SIDEX_HANDLE sHandle = SIDEX_HANDLE_TYPE_NULL;
   iErr = tml_Cmd_Acquire_Sidex_Handle(cmdMsg, &sHandle);
-  if (TML_SUCCESS == iErr)
+/*  if (TML_SUCCESS == iErr)
     iErr = sidex_Integer_Read(sHandle, PARAMS, SLEEP_MS, &iSleep);
   if (TML_SUCCESS == iErr)
-    iErr = sidex_Integer_Write(sHandle, PARAMS, SLEEP_MS, iSleep / 2);
+    iErr = sidex_Integer_Write(sHandle, PARAMS, SLEEP_MS, iSleep / 2);*/
+  
+/*  wchar_t *fileContent = NULL;
+  SIDEX_INT32 fcLength = 0;
+  iErr = sidex_String_Read(sHandle, PARAMS, (wchar_t *)"FILE_CONTENT", &fileContent, &fcLength);
   if (TML_SUCCESS == iErr)
+{
+    std::string str((char *)fileContent);
+printf ("%d", str.length());
+}
+else
+printf ("%d", iErr);*/
     iErr = tml_Cmd_Release_Sidex_Handle(cmdMsg);
   wait (iSleep);
+#endif
 }
 
 
@@ -181,6 +227,10 @@ TML_INT32 initListener(TML_CORE_HANDLE* listenerCore)
   // TML_CORE_HANDLE to receive commands / messages 
   TML_CORE_HANDLE coreHandle = TML_HANDLE_TYPE_NULL;
   iErr = tml_Core_Open(&coreHandle, 0);
+
+  tml_Core_Set_LoggingValue(coreHandle, TML_LOG_VORTEX_CMD | TML_LOG_CORE_IO | TML_LOG_CORE_API | TML_LOG_MULTI_SYNC_CMDS |
+	TML_LOG_VORTEX_FRAMES | TML_LOG_VORTEX_CH_POOL | TML_LOG_VORTEX_MUTEX | TML_LOG_INTERNAL_DISPATCH | 
+	TML_LOG_STREAM_HANDLING | TML_LOG_EVENT);	
   /////////////////////////////////////////////////////////////////////////
   // Declare the IP of the listener network device
   if (TML_SUCCESS == iErr)
@@ -203,8 +253,8 @@ TML_INT32 initListener(TML_CORE_HANDLE* listenerCore)
     iErr = tml_Profile_Register_Cmd (coreHandle, IO_PROFILE, (TML_COMMAND_ID_TYPE) 4711, callbackMethodCmd4711, TML_HANDLE_TYPE_NULL);
   /////////////////////////////////////////////////////////////////////////
   // Register a callbackmethod for command dispatching of command 4711
-  if (TML_SUCCESS == iErr)
-    iErr = tml_Profile_Register_Cmd (coreHandle, IO_PROFILE2, (TML_COMMAND_ID_TYPE) 4711, callbackMethodCmd4711P2, TML_HANDLE_TYPE_NULL);
+  //if (TML_SUCCESS == iErr)
+    //iErr = tml_Profile_Register_Cmd (coreHandle, IO_PROFILE2, (TML_COMMAND_ID_TYPE) 4711, callbackMethodCmd4711P2, TML_HANDLE_TYPE_NULL);
   /////////////////////////////////////////////////////////////////////////
   // Enable listener
   if (TML_SUCCESS == iErr)
@@ -219,26 +269,6 @@ TML_INT32 initListener(TML_CORE_HANDLE* listenerCore)
 /**
  * A simple listener example 
  */
-bool listenerTest01()
-{
-  TML_INT32 iErr = TML_SUCCESS; // API return value
-  /////////////////////////////////////////////////////////////////////////
-  // TML_CORE_HANDLE to receive commands / messages 
-  TML_CORE_HANDLE coreHandle = TML_HANDLE_TYPE_NULL;
-
-  iErr = initListener(&coreHandle);
-  /////////////////////////////////////////////////////////////////////////
-  // loop until the input of "exit"
-  if (TML_SUCCESS == iErr)
-    waitUntilExitInput((char*)"listenerTest01");
-  ///////////////////////////////////////////////////////////////////////
-  // Free the instance of TMLCore:
-  if (TML_HANDLE_TYPE_NULL != coreHandle)
-    tml_Core_Close(&coreHandle);
-  if (TML_SUCCESS != iErr)
-    printf ("listenerTest01 / error happened - Code = %d\n", iErr);
-  return true;
-}
 
 /**
  * Command initialisation
@@ -873,3 +903,165 @@ bool tlsTest()
   return false;
 }
 #endif // BUILD_TLS
+
+bool listenerTest01()
+{
+  TML_INT32 iErr = TML_SUCCESS; // API return value
+  /////////////////////////////////////////////////////////////////////////
+  // TML_CORE_HANDLE to receive commands / messages
+  TML_CORE_HANDLE coreHandle = TML_HANDLE_TYPE_NULL;
+
+  iErr = initListener(&coreHandle);
+
+TML_BOOL bAccepted;
+
+  // Allow to configure if the provided tml core will accept TLS incoming connections^M
+   if (TML_SUCCESS == iErr)
+{
+iErr = tml_Tls_Core_AcceptNegotiation(coreHandle,
+check_and_accept_tls_request,
+certificate_file_location,
+private_key_file_location,
+&bAccepted);
+}
+
+printf ("Accepted TLS");
+
+  /////////////////////////////////////////////////////////////////////////
+  // loop until the input of "exit"
+  if (TML_SUCCESS == iErr)
+    waitUntilExitInput((char*)"listenerTest01");
+  ///////////////////////////////////////////////////////////////////////
+  // Free the instance of TMLCore:
+  if (TML_HANDLE_TYPE_NULL != coreHandle)
+    tml_Core_Close(&coreHandle);
+  if (TML_SUCCESS != iErr)
+    printf ("listenerTest01 / error happened - Code = %d\n", iErr);
+  return true;
+}
+
+void sendFilesToPeerViaStream(TML_CORE_HANDLE senderCoreHandle, TML_CORE_HANDLE listenerCoreHandle, const char* dirName, bool recurse)
+{
+#if 0
+    HANDLE hFind = INVALID_HANDLE_VALUE;
+    TCHAR szDir[MAX_PATH];
+    WIN32_FIND_DATA ffd;
+    LARGE_INTEGER filesize;
+    DWORD  retval = 0;
+    BOOL   success;
+    TCHAR  buffer[512] = TEXT("");
+    TCHAR  buf[512] = TEXT("");
+    TCHAR** lppPart = { NULL };
+    std::string dName(dirName);
+    dName.append("\\*");
+    hFind = FindFirstFile(dName.c_str(), &ffd);
+    do
+    {
+        if (recurse && (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            std::string fullpath(dirName);
+            fullpath.append("\\");
+            fullpath.append((const char*)ffd.cFileName);
+            if (!(strcmp(ffd.cFileName, ".") == 0 || (strcmp(ffd.cFileName, "..") == 0) || (strstr(ffd.cFileName, "..")) != NULL))
+            {
+                printf("sub dir: %s\n", fullpath.c_str());
+                sendFilesToPeerViaStream(senderCoreHandle, listenerCoreHandle, fullpath.c_str(), true);
+            }
+        }
+        else
+        {
+            TML_INT32 iErr = TML_SUCCESS;
+            filesize.LowPart = ffd.nFileSizeLow;
+            filesize.HighPart = ffd.nFileSizeHigh;
+            //printf("  %s   %ld bytes\n", ffd.cFileName, filesize.QuadPart);
+            char *fileExt;
+            char szDir[256]; //dummy buffer
+            //GetFullPathName(argv[0], 256, "C:\\Users\\bracham\\Downloads", &fileExt);
+            std::string fullpath(dirName);
+            fullpath.append("\\");
+            fullpath.append((char*)ffd.cFileName);
+            //iErr = createCmd4716(&cmdMsg2, (char*)ffd.cFileName, fullpath.c_str(), true);
+            TML_STREAM_ID_TYPE  iStreamID;
+            iErr = tml_SndStream_Open(senderCoreHandle, &iStreamID, IO_PROFILE, DESTINATION_HOST_IP, IO_PORT);
+            printf("SendStream iErr1 = %d\n", iErr);
+            iErr = tml_RecStream_Open(listenerCoreHandle, iStreamID, IO_PROFILE, DESTINATION_HOST_IP, IO_PORT);
+            printf("SendStream iErr2 = %d\n", iErr);
+            SIDEX_HANDLE sHandle = SIDEX_HANDLE_TYPE_NULL;
+            if (TML_SUCCESS == iErr)
+                iErr = tml_Cmd_Acquire_Sidex_Handle(iStreamID, &sHandle);
+            //printf("%d - full file path %s\n", ++filecounter, fullpath);
+            //printf("buffer content %s\n", fileData.c_str());
+            if (TML_SUCCESS == iErr);
+            sidex_String_Write(sHandle, MY_GROUP, (wchar_t*)L"fileName", (wchar_t*)ffd.cFileName);
+            // Write Data now
+            std::string fileData = get_file_contents(fullpath.c_str());
+            //tml_SndStream_Register_Write(coreHandle, iStreamID, NULL, NULL);
+            TML_ON_SND_STRM_WRITE_CB_FUNC writeToStream;
+            iErr = tml_SndStream_Register_Write(senderCoreHandle, iStreamID, writeToStream, (void *)senderCoreHandle);
+            printf("stream id %I64d\n", iStreamID);
+            printf("read %s, - %s - %d\n", fullpath.c_str(), fileData.c_str(), fileData.size());
+            //printf("writeStream returns %d, \n", ((TML_INT32(FUNC_C_DECL *)(TML_STREAM_ID_TYPE, TML_POINTER, TML_INT32, TML_POINTER))writeToStream) (iStreamID, (void *)fileData.c_str(), fileData.size(), NULL));
+            printf("SendStream iErr3 = %d\n", iErr);
+            //iErr = tml_RecStream_Write(senderCoreHandle, iStreamID, (void *)fileData.c_str(), fileData.size());
+            printf("SendStream iErr4 = %d\n", iErr);
+            //iErr = tml_SndStream_Close(senderCoreHandle, iStreamID);
+            printf("SendStream iErr5 = %d\n", iErr);
+            printf("stream id %I64d\n", iStreamID);
+            TML_INT64 fileSizeOnWire = 0;
+            iErr = tml_RecStream_GetSize(listenerCoreHandle, iStreamID, &fileSizeOnWire);
+            printf("SendStream iErr6 = %d\n", iErr);
+            printf("size = %I64d\n", fileSizeOnWire);
+            char* data = new char[fileSizeOnWire];
+            iErr = tml_RecStream_ReadBuffer(listenerCoreHandle, iStreamID, data, fileSizeOnWire);
+            printf("SendStream iErr7 = %d\n", iErr);
+            printf("final data = %s\n", data);
+            iErr = tml_RecStream_Close(listenerCoreHandle, iStreamID, false);
+            counter++;
+            if ((counter % 100) == 0)
+                wait(15000);
+        }
+    } while (FindNextFile(hFind, &ffd) != 0);
+    FindClose(hFind);
+#endif
+}
+
+bool sendFilesViaStream()
+{
+#if 0
+    TML_INT32 iErr = TML_SUCCESS; // API return value
+    TML_COMMAND_HANDLE cmdMsg = TML_HANDLE_TYPE_NULL;
+    TML_CORE_HANDLE coreHandle = TML_HANDLE_TYPE_NULL;
+    TML_CORE_HANDLE coreListenerHandle = TML_HANDLE_TYPE_NULL;
+    TML_COMMAND_HANDLE cmdMsg2 = TML_HANDLE_TYPE_NULL;
+    SIDEX_HANDLE sHandle = SIDEX_HANDLE_TYPE_NULL;
+    wchar_t* myChar = NULL;
+    TML_INT32 iLen = 0;
+
+    iErr = initListener(&coreListenerHandle);
+    /////////////////////////////////////////////////////////////////////////
+    // TML_CORE_HANDLE to send commands / messages 
+    if (TML_SUCCESS == iErr)
+        iErr = tml_Core_Open(&coreHandle, 0);
+
+    /////////////////////////////////////////////////////////////////////////
+    // send command / message 
+    if (TML_SUCCESS == iErr){
+        sendFilesToPeerViaStream(coreHandle, coreListenerHandle, "C:\\tmltest\\", true);
+        wait(18000000);
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+    // Free the instance of Command / message HANDLE:
+    if (TML_HANDLE_TYPE_NULL != cmdMsg)
+        tml_Cmd_Free(&cmdMsg);
+    ///////////////////////////////////////////////////////////////////////
+    // Free the instance of TMLCore:
+    if (TML_HANDLE_TYPE_NULL != coreHandle)
+        tml_Core_Close(&coreHandle);
+    ///////////////////////////////////////////////////////////////////////
+    // Errorhandling:
+    if (TML_SUCCESS != iErr)
+        printf("sendFilesViaStream / error happened - Code = %d\n", iErr);
+#endif
+    return true;
+}

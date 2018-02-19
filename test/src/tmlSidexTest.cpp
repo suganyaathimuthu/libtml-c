@@ -46,6 +46,10 @@
 #include <sidexTests.h>
 #include <tmlTests.h>
 
+
+extern void multiListener();
+extern void sendMultiThreaded();
+
 /**
  * Run a test depending of test number
  */
@@ -79,6 +83,12 @@ bool run_test(int no)
     case 12: bDone = tlsTest();// TLS-encoding
              break;    
 #endif // BUILD_TLS
+    case 13: sendMultiThreaded();
+             bDone = true;
+             break;
+    case 14: multiListener();
+             bDone = true;
+             break;
     default: bDone = false;
              break;
   }
@@ -117,6 +127,8 @@ int main(int argc, char **argv)
 #ifdef BUILD_TLS
       printf ("\"12\"    - perform TML send & listen (TLS-encoding)\n");
 #endif // BUILD_TLS
+      printf ("\"13\"    - perform send on with multiple threads.\n");
+      printf ("\"14\"    - listener for option 13.\n");
       printf ("\"sidex\" - perform all SIDEX tests\n");
       printf ("\"tml\"   - perform all TML tests\n");
       printf ("\"all\"   - perform all SIDEX and TML tests\n");
@@ -175,6 +187,8 @@ int main(int argc, char **argv)
 #ifdef BUILD_TLS
       printf ("TML send & listen (TLS-encoding)                 - enter \"12<enter>\"\n");
 #endif // BUILD_TLS
+      printf ("TML file Send With Multiple threads              - enter \"13<enter>\"\n");
+      printf ("Listener for test 13                             - enter \"14<enter>\"\n");
       printf ("Exit demo                        - enter \"exit<enter>\"\n");
       int i = scanf("%s", sInput);
       if (1 <= i){
@@ -204,6 +218,16 @@ int main(int argc, char **argv)
         if (strcmp(sInput, (char*) "12") == 0)
           bDone = run_test(12);
 #endif // BUILD_TLS
+        if (strcmp(sInput, (char*) "13") == 0)
+        {
+          sendMultiThreaded();
+          bDone = true;
+        }
+        if (strcmp(sInput, (char*) "14") == 0)
+        {
+          multiListener();
+          bDone = true;
+        }
         if (strcmp(sInput, (char*) "exit") == 0)
           bDone = true;
       }

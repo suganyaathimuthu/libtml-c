@@ -89,7 +89,7 @@ if (${TML_TARGET_PLATFORM} STREQUAL linux_x86-32)
 
   ADD_DEFINITIONS ("-std=c++0x")
   ADD_DEFINITIONS("-m32")
-  ADD_DEFINITIONS("-DLINUX -DSIDEX_UNICODE -DTML_UNICODE -DGCC4 -D${BUILD_TLS_ATTR}")
+  ADD_DEFINITIONS("-DLINUX -DGCC4 -D${BUILD_TLS_ATTR}")
   set(CMAKE_CXX_FLAGS "-m32")
 endif (${TML_TARGET_PLATFORM} STREQUAL linux_x86-32)
 
@@ -175,7 +175,8 @@ set  (TEST_SOURCES_HEADER
 set  (TEST_SOURCES
       "tmlSidexTest.cpp"
       "sidexTests.cpp"
-      "tmlTests.cpp")
+      "tmlTests.cpp"
+      "msgproxyTests.cpp")
       
 add_executable(${TARGETNAME_LOCAL} 
 	             ${TEST_SOURCES_HEADER} ${TEST_SOURCES})
