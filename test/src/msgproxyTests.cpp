@@ -8,6 +8,12 @@
 #include <sstream>
 #include <sidex.h>
 
+#include <logValues.h>
+
+pthread_mutexattr_t  attr;
+typedef pthread_mutex_t      HANDLE;
+HANDLE m_mutex;
+
 
 static TML_CORE_HANDLE m_CoreSenderHandle;
 static TML_CORE_HANDLE m_CoreListenerHandle;
@@ -17,6 +23,50 @@ const std::string PEER_IP("127.0.0.1");
 const int COMMAND_ID = 2000;
 const std::string pathToFiles("/tmp/tmltest");
 const std::string profileName("TEST_PROFILE");
+
+void mutex_create(HANDLE* mutex_def){
+#ifdef _WIN32
+  (*mutex_def) = CreateMutex (NULL, false, NULL);
+#else
+  pthread_mutex_init(mutex_def, &attr);
+#endif
+}
+
+void mutex_destroy(HANDLE* mutex_def)
+{
+#ifdef _WIN32
+  CloseHandle (*mutex_def);
+  (*mutex_def) = NULL;
+#else
+pthread_mutex_destroy(mutex_def);
+#endif
+  return;
+}
+
+void mutex_lock(HANDLE* mutex_def)
+{
+  if (mutex_def == NULL)
+    return;
+#ifdef _WIN32
+  WaitForSingleObject (*mutex_def, INFINITE);
+#else
+pthread_mutex_lock(mutex_def);
+#endif
+  return;
+}
+
+void mutex_unlock(HANDLE* mutex_def)
+{
+  if (mutex_def == NULL)
+    return;
+#ifdef _WIN32
+  ReleaseMutex (*mutex_def);
+#else
+pthread_mutex_unlock(mutex_def);
+#endif
+  return;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -46,7 +96,7 @@ void onDisconnectCallback(TML_CONNECTION_HANDLE connectionHandle, TML_POINTER cb
     tml_Connection_Get_Address(connectionHandle, &pAddress);
     peerName.assign(pAddress);
 
-    tml_Connection_Close(&connectionHandle);
+    //tml_Connection_Close(&connectionHandle);
     std::cout << "Disconnected from " << peerName;
 
 }
@@ -61,6 +111,10 @@ bool initializeSender()
     {
         return false;
     }
+    tml_Core_Set_LoggingValue(m_CoreSenderHandle, TML_LOG_VORTEX_CMD | TML_LOG_CORE_IO | TML_LOG_CORE_API | TML_LOG_MULTI_SYNC_CMDS |
+        TML_LOG_VORTEX_FRAMES | TML_LOG_VORTEX_CH_POOL | TML_LOG_VORTEX_MUTEX | TML_LOG_INTERNAL_DISPATCH |
+        TML_LOG_STREAM_HANDLING | TML_LOG_EVENT);
+
     tml_Core_Set_OnDisconnect(m_CoreSenderHandle, onDisconnectCallback, NULL);
     return true;
 }
@@ -69,6 +123,7 @@ bool initializeSender()
 // Open Connection to peer
 bool connectToPeer(const std::string &peerName, const std::string &peerPort)
 {
+    mutex_lock(&m_mutex);
     TML_INT32 iErr = TML_SUCCESS;
     std::string peer(peerName);
     peer.append(":");
@@ -86,6 +141,8 @@ bool connectToPeer(const std::string &peerName, const std::string &peerPort)
         TML_INT32 iErr = tml_Connection_Validate(connHandle, TML_TRUE, &isConnected);
         if ((TML_SUCCESS == iErr) && (TML_TRUE == isConnected))
         {
+           printf ("RRRRRRRCONNECTED");
+            mutex_unlock(&m_mutex);
             return true;
         }
     }
@@ -100,6 +157,7 @@ bool connectToPeer(const std::string &peerName, const std::string &peerPort)
 
     if (TML_SUCCESS != iErr)
     {
+            mutex_unlock(&m_mutex);
         return false;
     }
 
@@ -112,6 +170,7 @@ bool connectToPeer(const std::string &peerName, const std::string &peerPort)
             return RET_ERR_CODE(iErr);
     }
 */
+            mutex_unlock(&m_mutex);
     return true;
 }
 
@@ -367,6 +426,7 @@ void *threadMain(void *args)
 }
 void sendMultiThreaded()
 {
+    mutex_create(&m_mutex);
     // Initialize Sender
     bool ret = initializeSender();
     if (!ret)
@@ -379,6 +439,11 @@ void sendMultiThreaded()
     pthread_t thread_id[8];
     int thread_args[8];
 
+    ret = connectToPeer(PEER_IP, CORE_LISTENER_PORT);
+    if (!ret)
+        {
+            std::cout << "Unable to connect to peer" << std::endl;
+        }
     for(int i=0; i < 8; i++)
     {
         thread_args[i] = i;
@@ -389,6 +454,7 @@ void sendMultiThreaded()
     {
         pthread_join(thread_id[j], NULL);
     }
+    mutex_destroy(&m_mutex);
 }
 
 void multiListener()
