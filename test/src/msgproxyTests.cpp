@@ -10,11 +10,11 @@
 
 #include <logValues.h>
 
-pthread_mutexattr_t  attr;
-typedef pthread_mutex_t      HANDLE;
-HANDLE m_mutex;
+//pthread_mutexattr_t  attr;
+//typedef pthread_mutex_t      HANDLE;
+//HANDLE m_mutex;
 
-
+static TML_CONNECTION_HANDLE g_connHandle = TML_HANDLE_TYPE_NULL;
 static TML_CORE_HANDLE m_CoreSenderHandle;
 static TML_CORE_HANDLE m_CoreListenerHandle;
 const std::string CORE_LISTENER_IP("0.0.0.0");
@@ -24,6 +24,7 @@ const int COMMAND_ID = 2000;
 const std::string pathToFiles("/tmp/tmltest");
 const std::string profileName("TEST_PROFILE");
 
+/*
 void mutex_create(HANDLE* mutex_def){
 #ifdef _WIN32
   (*mutex_def) = CreateMutex (NULL, false, NULL);
@@ -66,7 +67,7 @@ pthread_mutex_unlock(mutex_def);
 #endif
   return;
 }
-
+*/
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,9 +112,9 @@ bool initializeSender()
     {
         return false;
     }
-    tml_Core_Set_LoggingValue(m_CoreSenderHandle, TML_LOG_VORTEX_CMD | TML_LOG_CORE_IO | TML_LOG_CORE_API | TML_LOG_MULTI_SYNC_CMDS |
+    /*tml_Core_Set_LoggingValue(m_CoreSenderHandle, TML_LOG_VORTEX_CMD | TML_LOG_CORE_IO | TML_LOG_CORE_API | TML_LOG_MULTI_SYNC_CMDS |
         TML_LOG_VORTEX_FRAMES | TML_LOG_VORTEX_CH_POOL | TML_LOG_VORTEX_MUTEX | TML_LOG_INTERNAL_DISPATCH |
-        TML_LOG_STREAM_HANDLING | TML_LOG_EVENT);
+        TML_LOG_STREAM_HANDLING | TML_LOG_EVENT);*/
 
     tml_Core_Set_OnDisconnect(m_CoreSenderHandle, onDisconnectCallback, NULL);
     return true;
@@ -121,43 +122,38 @@ bool initializeSender()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Open Connection to peer
-bool connectToPeer(const std::string &peerName, const std::string &peerPort)
+bool connectToPeer(const std::string &peerName, const std::string &peerPort, TML_CONNECTION_HANDLE* t_connHandle)
 {
-    mutex_lock(&m_mutex);
     TML_INT32 iErr = TML_SUCCESS;
     std::string peer(peerName);
     peer.append(":");
     peer.append(peerPort);
 
-    // Connection is not created already. Create connection handle.
-    TML_CONNECTION_HANDLE connHandle = TML_HANDLE_TYPE_NULL;
-
     // Get connection handle for the peer
     // If the conenction is already available, return immediately.
-    iErr = tml_Core_Get_ConnectionByAddress(m_CoreSenderHandle, (char *)peer.c_str(), &connHandle);
+    iErr = tml_Core_Get_ConnectionByAddress(m_CoreSenderHandle, (char *)peer.c_str(), &g_connHandle);
     if (TML_SUCCESS == iErr)
     {
         TML_BOOL isConnected = TML_FALSE;
-        TML_INT32 iErr = tml_Connection_Validate(connHandle, TML_TRUE, &isConnected);
+        TML_INT32 iErr = tml_Connection_Validate(g_connHandle, TML_TRUE, &isConnected);
         if ((TML_SUCCESS == iErr) && (TML_TRUE == isConnected))
         {
-           printf ("RRRRRRRCONNECTED");
-            mutex_unlock(&m_mutex);
+           printf ("CONNECTED");
             return true;
         }
     }
 
     // If it returned a handle that was not connected, clean up and try again.
-    if (TML_HANDLE_TYPE_NULL != connHandle)
+    if (TML_HANDLE_TYPE_NULL != g_connHandle)
     {
-        tml_Connection_Close(&connHandle);
+        tml_Connection_Close(&g_connHandle);
+
     }
 
-    iErr = tml_Core_Connect(m_CoreSenderHandle, peer.c_str(), &connHandle);
+    iErr = tml_Core_Connect(m_CoreSenderHandle, peer.c_str(), &g_connHandle);
 
     if (TML_SUCCESS != iErr)
     {
-            mutex_unlock(&m_mutex);
         return false;
     }
 
@@ -170,8 +166,8 @@ bool connectToPeer(const std::string &peerName, const std::string &peerPort)
             return RET_ERR_CODE(iErr);
     }
 */
-            mutex_unlock(&m_mutex);
     return true;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -222,22 +218,22 @@ bool createFileTxCmdForProfile(const std::string &filePath, TML_COMMAND_HANDLE *
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Send File
-bool sendFileSync(const std::string peerName, const std::string peerPort,
+bool sendFileSync(TML_CONNECTION_HANDLE* connHandle,
     const std::string &filepath, int timeout)
 {
-    std::string connStr(peerName);
-    connStr.append(":");
-    connStr.append(peerPort);
-
-    TML_CONNECTION_HANDLE connHandle = TML_HANDLE_TYPE_NULL;
+    //std::string connStr(peerName);
+    //connStr.append(":");
+    //connStr.append(peerPort);
+	TML_INT32 iErr = TML_SUCCESS;
+    //TML_CONNECTION_HANDLE connHandle = TML_HANDLE_TYPE_NULL;
 
     // Get connection handle for the peer
-    // If the conenction is already available, return immediately.
-    TML_INT32 iErr = tml_Core_Get_ConnectionByAddress(m_CoreSenderHandle, (char *)connStr.c_str(), &connHandle);
-    if (TML_SUCCESS == iErr)
+    // If the connection is already available, return immediately.
+    //TML_INT32 iErr = tml_Core_Get_ConnectionByAddress(m_CoreSenderHandle, (char *)connStr.c_str(), &connHandle);
+    if (g_connHandle != TML_HANDLE_TYPE_NULL)
     {
         TML_BOOL isConnected = TML_FALSE;
-        TML_INT32 iErr = tml_Connection_Validate(connHandle, TML_TRUE, &isConnected);
+        iErr = tml_Connection_Validate(g_connHandle, TML_TRUE, &isConnected);
         if ((TML_SUCCESS != iErr) || (TML_TRUE != isConnected))
         {
             return false;
@@ -245,7 +241,7 @@ bool sendFileSync(const std::string peerName, const std::string peerPort,
     }
     else
     {
-        return false;
+       return false;
     }
 
     // Valid connection. Create command and send over that.
@@ -257,7 +253,7 @@ bool sendFileSync(const std::string peerName, const std::string peerPort,
     }
 
     // Send the command over the connection.
-    iErr = tml_Connection_SendSync(connHandle, profileName.c_str(), cmdMsg, timeout);
+    iErr = tml_Connection_SendSync(g_connHandle, profileName.c_str(), cmdMsg, timeout);
     if (TML_SUCCESS != iErr)
     {
         if (TML_HANDLE_TYPE_NULL != cmdMsg)
@@ -392,18 +388,10 @@ bool registerProfiles(const std::string &profileName, const int commandID)
 /////////////////////////////////////////////////////////////////////////////////////////
 /// MAIN FUNCTIONS
 /////////////////////////////////////////////////////////////////////////////////////////
-void *threadMain(void *args)
+void* threadMain(void *args)
 {
-    while (1)
+	while (1)
     {
-        // Connect to Peer
-        bool ret = connectToPeer(PEER_IP, CORE_LISTENER_PORT);
-        if (!ret)
-        {
-            std::cout << "Unable to connect to peer" << std::endl;
-        }
-        else
-        {
             // Path to file
             std::string filePath(pathToFiles);
             filePath.append("/");
@@ -412,12 +400,12 @@ void *threadMain(void *args)
             std::string fileName = std::to_string(num);
             filePath.append(fileName);
             // Send file 
-            ret = sendFileSync(PEER_IP, CORE_LISTENER_PORT, filePath, 10000);
+            bool ret = sendFileSync(&g_connHandle, filePath, 10000);
             if (!ret)
             {
                 std::cout << "Failed to send file" << std::endl;
+                return (void*)-1;
             }
-        }
         // Sleep for 3 seconds. File sent every three seconds.
         usleep(3 * 1000 * 1000);
     }
@@ -426,8 +414,9 @@ void *threadMain(void *args)
 }
 void sendMultiThreaded()
 {
-    mutex_create(&m_mutex);
+	//  mutex_create(&m_mutex);
     // Initialize Sender
+
     bool ret = initializeSender();
     if (!ret)
     {
@@ -435,26 +424,34 @@ void sendMultiThreaded()
         return;
     }
 
-    // Spawn threads to send data
-    pthread_t thread_id[8];
-    int thread_args[8];
-
-    ret = connectToPeer(PEER_IP, CORE_LISTENER_PORT);
-    if (!ret)
-        {
-            std::cout << "Unable to connect to peer" << std::endl;
-        }
-    for(int i=0; i < 8; i++)
+    while(1)
     {
-        thread_args[i] = i;
-        pthread_create(&thread_id[i], NULL, threadMain, &thread_args[i]);
-    }
+		ret = connectToPeer(PEER_IP, CORE_LISTENER_PORT, &g_connHandle);
+		// Spawn threads to send data
+		pthread_t thread_id[8];
+		int thread_args[8];
 
-    for(int j=0; j < 8; j++)
-    {
-        pthread_join(thread_id[j], NULL);
+		if (!ret)
+		{
+				std::cout << "Unable to connect to peer" << std::endl;
+		}
+		else
+		{
+		for(int i=0; i < 8; i++)
+		{
+			thread_args[i] = i;
+			pthread_create(&thread_id[i], NULL, threadMain, &thread_args[i]);
+		}
+
+		for(int j=0; j < 8; j++)
+		{
+			pthread_join(thread_id[j], NULL);
+		}
+		//  mutex_destroy(&m_mutex);
+		printf("Existing the thread");
+		}
+		usleep(3 * 1000 * 1000);
     }
-    mutex_destroy(&m_mutex);
 }
 
 void multiListener()
